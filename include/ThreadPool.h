@@ -1,22 +1,30 @@
-#include<bits/stdc++.h>
+#pragma once
+
+#include <vector>
+#include <thread>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+
+#include "Proxy.h"
+
 class ThreadPool
 {
-public:
+private:
+    std::vector<std::thread> workers;
+    std::queue<int> tasks;
 
+    std::mutex queueMutex;
+    std::condition_variable condition;
+
+    bool stop;
+
+    Proxy proxy;
+
+public:
     ThreadPool(int numThreads);
 
     void enqueue(int clientSocket);
 
     ~ThreadPool();
-
-private:
- std::vector<std::thread> workers;
-
-std::queue<int> tasks;
-
-std::mutex queueMutex;
-
-std::condition_variable condition;
-
-bool stop = false;
 };

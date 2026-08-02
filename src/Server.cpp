@@ -1,64 +1,90 @@
 #include "Server.h"
-#include <iostream>      // Required for std::cout
-#include <sys/socket.h>  // Required for socket, bind, listen, setsockopt
-#include <netinet/in.h>
+
+#include <iostream>
+#include<Logger.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 Server::Server(int port)
+    : port(port),
+      serverSocket(-1),
+      threadPool(4)
 {
-    this->port = port;
-    serverSocket = -1;
 }
+
 bool Server::start()
 {
-    serverSocket = socket(AF_INET,
-                          SOCK_STREAM,
-                          0);
+    // Step 1: Create socket
+    serverSocket = socket(
+        AF_INET,
+        SOCK_STREAM,
+        0
+    );
 
-    if(serverSocket==-1)
+    if (serverSocket == -1)
     {
-        std::cout<<"Socket Error\n";
+        Logger::error("Failed to create server socket");
         return false;
     }
+
+    // Step 2: Server address
     sockaddr_in serverAddr{};
 
-serverAddr.sin_family=AF_INET;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(port);
+    serverAddr.sin_addr.s_addr = INADDR_ANY;
 
-serverAddr.sin_port=htons(port);
+    // Step 3: Bind socket
+    if (bind(
+            serverSocket,
+            (sockaddr*)&serverAddr,
+            sizeof(serverAddr)
+        ) == -1)
+    {
+       
+         Logger::error("Failed to bind server socket");
+        close(serverSocket);
 
-serverAddr.sin_addr.s_addr=INADDR_ANY;
-if(bind(serverSocket,
-        (sockaddr*)&serverAddr,
-        sizeof(serverAddr))==-1)
-{
-    std::cout<<"Bind Error\n";
+        return false;
+    }
 
-    return false;
+    // Step 4: Listen
+    if (listen(serverSocket, 10) == -1)
+    {
+        
+        Logger::error("Failed to listen");
+        close(serverSocket);
+
+        return false;
+    }
+
+   Logger::info("Server listening");
+
+    return true;
 }
-if(listen(serverSocket,10)==-1)
-{
-    std::cout<<"Listen Error\n";
 
-    return false;
-}
-std::cout<<"Server Started\n";
-
-return true;
-}
 void Server::run()
 {
-    while(true)
+    while (true)
     {
-        int clientSocket=
-        accept(serverSocket,
-               nullptr,
-               nullptr);
+        int clientSocket =
+            accept(
+                serverSocket,
+                nullptr,
+                nullptr
+            );
 
-        if(clientSocket==-1)
+        if (clientSocket == -1)
+        {
+            
+            Logger::error("Failed to accept client");
             continue;
+        }
 
-        std::cout<<"Client Connected\n";
-
-        close(clientSocket);
+        
+        Logger::info("Client Connected");
+        threadPool.enqueue(clientSocket);
     }
 }

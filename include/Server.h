@@ -1,15 +1,16 @@
 #pragma once
 
+#include "ThreadPool.h"
+
 class Server
 {
 private:
-
+    int serverSocket;
     int port;
 
-    int serverSocket;
+    ThreadPool threadPool;
 
 public:
-
     Server(int port);
 
     bool start();

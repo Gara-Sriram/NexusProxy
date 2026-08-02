@@ -2,7 +2,7 @@
 
 #include <iostream>
 #include <cstring>
-
+#include <Logger.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -23,13 +23,13 @@ void Proxy::handleClient(int clientSocket)
 
     if (bytesReceived <= 0)
     {
-        std::cerr << "Failed to receive client request\n";
-
+        
+        Logger::error("Failed to receive client request");
         close(clientSocket);
         return;
     }
+     Logger::info("========== HTTP Request ==========");
 
-    std::cout << "========== HTTP Request ==========\n";
     std::cout << request << std::endl;
 
     // Step 2: Create backend socket
@@ -42,8 +42,8 @@ void Proxy::handleClient(int clientSocket)
 
     if (backendSocket == -1)
     {
-        std::cerr << "Failed to create backend socket\n";
-
+       
+         Logger::error("Failed to create backend socket");
         close(clientSocket);
         return;
     }
@@ -70,8 +70,8 @@ void Proxy::handleClient(int clientSocket)
             sizeof(backendAddr)
         ) == -1)
     {
-        std::cerr << "Failed to connect to backend\n";
-
+       
+        Logger::error("Failed to connect to backend");
         close(backendSocket);
         close(clientSocket);
 
