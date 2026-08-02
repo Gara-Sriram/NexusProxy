@@ -54,7 +54,19 @@ cd build
 cmake ..
 make
 ```
+## ✅ Completed
 
-## Status
+- Reverse proxy using POSIX sockets
+- HTTP request forwarding
+- Multithreaded request handling using a fixed-size thread pool
+- Producer–Consumer task queue with mutex and condition variables
+- Thread-safe LRU cache implementation
+- Modular project architecture (Server, Proxy, ThreadPool, Cache, Logger)
 
-🚧 Work in Progress
+## 🚧 In Progress
+
+- Cache integration with proxy
+- Round-robin load balancing
+- External configuration support
+- Enhanced logging
+- Performance benchmarking
