@@ -9,24 +9,101 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-Proxy::Proxy(): cache(100), currentBackend(0){
-   backends.push_back({"127.0.0.1",9000,true});
+Proxy::Proxy(const Config& config)
+    : cache(config.cacheSize),
+      currentBackend(0)
+{
+    for(const auto& backend : config.backends)
+    {
+        backends.push_back(
+        {
+            backend.ip,
+            backend.port,
+            true
+        });
+    }
+}
+void Proxy::markBackendUnhealthy(int port)
+{
+    std::lock_guard<std::mutex> lock(backendMutex);
 
-   backends.push_back({"127.0.0.1",9001,true});
+    for(auto &backend : backends)
+    {
+        if(backend.port == port)
+        {
+            backend.healthy = false;
 
-   backends.push_back({"127.0.0.1",9002,true});
+            Logger::error(
+                "Backend "
+                + std::to_string(port)
+                + " marked unhealthy"
+            );
+
+            break;
+        }
+    }
+}
+int Proxy::connectToBackend(Backend &backend)
+{
+    for(size_t i = 0; i < backends.size(); i++)
+    {
+        backend = getNextBackend();
+          if(backend.port == -1){
+        break;
+    }
+        int backendSocket =
+            socket(AF_INET, SOCK_STREAM, 0);
+
+        if(backendSocket == -1)
+        {
+            continue;
+        }
+
+        sockaddr_in backendAddr{};
+
+        backendAddr.sin_family = AF_INET;
+        backendAddr.sin_port = htons(backend.port);
+
+        inet_pton(
+            AF_INET,
+            backend.ip.c_str(),
+            &backendAddr.sin_addr
+        );
+        Logger::info("Trying backend " +backend.ip +":" +std::to_string(backend.port));
+        if(connect(backendSocket,(sockaddr*)&backendAddr,sizeof(backendAddr)) == -1){
+  
+            markBackendUnhealthy(backend.port);
+
+            close(backendSocket);
+
+            continue;
+        }
+
+        return backendSocket;
+    }
+
+    return -1;
 }
 Backend Proxy::getNextBackend()
 {
     std::lock_guard<std::mutex> lock(backendMutex);
 
-    Backend backend = backends[currentBackend];
+    for(size_t i=0;i<backends.size();i++)
+    {
+        Backend backend = backends[currentBackend];
 
-    currentBackend =
-        (currentBackend + 1) %
-        backends.size();
+        currentBackend =
+            (currentBackend+1)
+            %
+            backends.size();
 
-    return backend;
+        if(backend.healthy)
+        {
+            return backend;
+        }
+    }
+
+    return {"",-1,false};
 }
 std::string Proxy::extractKey(const std::string& request){
     std::stringstream ss(request);
@@ -92,7 +169,7 @@ void Proxy::handleClient(int clientSocket)
 
     if (cache.get(key, cachedResponse))
     {
-        std::cout << "[CACHE HIT] " << key << std::endl;
+        Logger::info("CACHE HIT : " + key);
 
         send(
             clientSocket,
@@ -105,54 +182,25 @@ void Proxy::handleClient(int clientSocket)
         return;
     }
 
-    std::cout << "[CACHE MISS] " << key << std::endl;
+   Logger::info("CACHE MISS : " + key);
     // Step 3: Create backend socket
 
-    int backendSocket = socket(
-        AF_INET,
-        SOCK_STREAM,
-        0
-    );
+  Backend backend;
 
-    if (backendSocket == -1)
-    {
-       
-         Logger::error("Failed to create backend socket");
-        close(clientSocket);
-        return;
-    }
+int backendSocket =
+    connectToBackend(backend);
 
-    // Step 4: Backend address
-    Backend backend = getNextBackend();
-    sockaddr_in backendAddr{};
 
-    backendAddr.sin_family = AF_INET;
-  backendAddr.sin_port = htons(backend.port);
+if(backendSocket == -1)
+{
+    Logger::error("All backends are unavailable");
 
-   inet_pton(
-    AF_INET,
-    backend.ip.c_str(),
-    &backendAddr.sin_addr
-);
+    close(clientSocket);
 
-    // Step 5: Connect to backend
-  
+    return;
+}
 
-    if (connect(
-            backendSocket,
-            (sockaddr*)&backendAddr,
-            sizeof(backendAddr)
-        ) == -1)
-    {
-       
-        Logger::error("Failed to connect to backend");
-        close(backendSocket);
-        close(clientSocket);
-
-        return;
-    }
-
-    // Step 6: Forward request
+    // Step 4: Forward request
 
     send(
         backendSocket,
@@ -161,7 +209,7 @@ void Proxy::handleClient(int clientSocket)
         0
     );
 
-    // Step 7: Receive backend response
+    // Step 5: Receive backend response
 
 
 char buffer[4096];
@@ -202,10 +250,7 @@ while(true)
         completeResponse
     );
 
-    std::cout
-        << "[CACHE STORE] "
-        << key
-        << std::endl;
+   Logger::info("CACHE STORE : " + key);
 }
 
     // Step 9: Cleanup

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Config.h"
 #include <string>
 #include <vector>
 #include <mutex>
@@ -36,7 +37,8 @@ private:
 
 public:
 
-    Proxy();
-
+   Proxy(const Config& config);
+    void markBackendUnhealthy(int port);
+    int connectToBackend(Backend &backend);
     void handleClient(int clientSocket);
 };

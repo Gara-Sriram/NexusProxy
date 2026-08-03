@@ -1,14 +1,17 @@
 #include "ThreadPool.h"
 
-ThreadPool::ThreadPool(int numThreads)
+ThreadPool::ThreadPool(
+    int numThreads,
+    const Config& config
+)
+    : proxy(config),
+      stop(false)
 {
-    stop = false;
-
-    for (int i = 0; i < numThreads; i++)
+    for(int i = 0; i < numThreads; i++)
     {
         workers.emplace_back([this]()
         {
-            while (true)
+            while(true)
             {
                 std::unique_lock<std::mutex> lock(queueMutex);
 
@@ -17,7 +20,7 @@ ThreadPool::ThreadPool(int numThreads)
                     return stop || !tasks.empty();
                 });
 
-                if (stop && tasks.empty())
+                if(stop && tasks.empty())
                 {
                     return;
                 }

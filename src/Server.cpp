@@ -7,10 +7,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-Server::Server(int port)
-    : port(port),
-      serverSocket(-1),
-      threadPool(4)
+Server::Server(const Config& config)
+    : port(config.proxyPort),
+      serverSocket(-1),running(true),
+      threadPool(config.threadPoolSize, config)
 {
 }
 
@@ -64,10 +64,16 @@ bool Server::start()
 
     return true;
 }
+void Server::stop()
+{
+    running=false;
+
+    close(serverSocket);
+}
 
 void Server::run()
 {
-    while (true)
+    while (running)
     {
         int clientSocket =
             accept(

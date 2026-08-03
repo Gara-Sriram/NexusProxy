@@ -22,7 +22,10 @@ private:
     Proxy proxy;
 
 public:
-    ThreadPool(int numThreads);
+   ThreadPool(
+    int numThreads,
+    const Config& config
+);
 
     void enqueue(int clientSocket);
 
