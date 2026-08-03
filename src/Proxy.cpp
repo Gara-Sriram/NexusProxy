@@ -1,5 +1,6 @@
 #include "Proxy.h"
 
+#include <sstream>
 #include <iostream>
 #include <cstring>
 #include <Logger.h>
@@ -8,6 +9,55 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
+Proxy::Proxy(): cache(100), currentBackend(0){
+   backends.push_back({"127.0.0.1",9000,true});
+
+   backends.push_back({"127.0.0.1",9001,true});
+
+   backends.push_back({"127.0.0.1",9002,true});
+}
+Backend Proxy::getNextBackend()
+{
+    std::lock_guard<std::mutex> lock(backendMutex);
+
+    Backend backend = backends[currentBackend];
+
+    currentBackend =
+        (currentBackend + 1) %
+        backends.size();
+
+    return backend;
+}
+std::string Proxy::extractKey(const std::string& request){
+    std::stringstream ss(request);
+
+    std::string method;
+    std::string path;
+
+    ss >> method;
+    ss >> path;
+
+    return path;
+}
+bool Proxy::shouldCache(const std::string& request,const std::string& response){
+    std::stringstream ss(request);
+
+    std::string method;
+
+    ss >> method;
+
+    if(method!="GET")
+    {
+        return false;
+    }
+
+    if(response.find("200 OK")==std::string::npos)
+    {
+        return false;
+    }
+
+    return true;
+}
 void Proxy::handleClient(int clientSocket)
 {
     // Step 1: Receive request from browser
@@ -32,7 +82,31 @@ void Proxy::handleClient(int clientSocket)
 
     std::cout << request << std::endl;
 
-    // Step 2: Create backend socket
+
+    std::string requestString(request, bytesReceived);
+    std::string key = extractKey(requestString);
+    
+    // Step 2: Check Cache
+
+    std::string cachedResponse;
+
+    if (cache.get(key, cachedResponse))
+    {
+        std::cout << "[CACHE HIT] " << key << std::endl;
+
+        send(
+            clientSocket,
+            cachedResponse.c_str(),
+            cachedResponse.size(),
+            0
+        );
+
+        close(clientSocket);
+        return;
+    }
+
+    std::cout << "[CACHE MISS] " << key << std::endl;
+    // Step 3: Create backend socket
 
     int backendSocket = socket(
         AF_INET,
@@ -48,20 +122,20 @@ void Proxy::handleClient(int clientSocket)
         return;
     }
 
-    // Step 3: Backend address
-
+    // Step 4: Backend address
+    Backend backend = getNextBackend();
     sockaddr_in backendAddr{};
 
     backendAddr.sin_family = AF_INET;
-    backendAddr.sin_port = htons(9000);
+  backendAddr.sin_port = htons(backend.port);
 
-    inet_pton(
-        AF_INET,
-        "127.0.0.1",
-        &backendAddr.sin_addr
-    );
+   inet_pton(
+    AF_INET,
+    backend.ip.c_str(),
+    &backendAddr.sin_addr
+);
 
-    // Step 4: Connect to backend
+    // Step 5: Connect to backend
   
 
     if (connect(
@@ -78,7 +152,7 @@ void Proxy::handleClient(int clientSocket)
         return;
     }
 
-    // Step 5: Forward request
+    // Step 6: Forward request
 
     send(
         backendSocket,
@@ -87,10 +161,12 @@ void Proxy::handleClient(int clientSocket)
         0
     );
 
-    // Step 6: Receive backend response
+    // Step 7: Receive backend response
 
 
 char buffer[4096];
+
+    std::string completeResponse;
 
 while(true)
 {
@@ -104,6 +180,11 @@ while(true)
 
     if(bytesReceived<=0)
         break;
+        // Build complete response for cache
+        completeResponse.append(
+            buffer,
+            bytesReceived
+        );
 
     send(
         clientSocket,
@@ -113,13 +194,21 @@ while(true)
     );
 }
 
-    // Step 7: Forward response
+    // Step 8: adding to cache
 
+    if(shouldCache(requestString,completeResponse)){
+    cache.put(
+        key,
+        completeResponse
+    );
 
-    
+    std::cout
+        << "[CACHE STORE] "
+        << key
+        << std::endl;
+}
 
-    // Step 8: Cleanup
-
+    // Step 9: Cleanup
 
     close(backendSocket);
     close(clientSocket);
